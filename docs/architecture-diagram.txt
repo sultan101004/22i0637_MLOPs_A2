@@ -1,0 +1,211 @@
+# Architecture Diagram (ASCII Art)
+# Convert to PNG using: https://asciiflow.com or similar tool
+
+╔═══════════════════════════════════════════════════════════════════════╗
+║              Full-Stack Microservices Architecture                    ║
+╚═══════════════════════════════════════════════════════════════════════╝
+
+                              ┌─────────────┐
+                              │   Browser   │
+                              │   (User)    │
+                              └──────┬──────┘
+                                     │ HTTP/HTTPS
+                                     │ Port 3000/30080
+                                     ▼
+                         ┌───────────────────────┐
+                         │    Frontend Service   │
+                         │   (React SPA)         │
+                         │   ┌───────────────┐   │
+                         │   │ Replica 1     │   │
+                         │   ├───────────────┤   │
+                         │   │ Replica 2     │   │ ◄── Kubernetes Service
+                         │   ├───────────────┤   │     (NodePort: 30080)
+                         │   │ Replica 3     │   │     Load Balancer
+                         │   └───────────────┘   │
+                         └───────┬───────────────┘
+                                 │
+                    ┌────────────┴────────────┐
+                    │                         │
+                    ▼                         ▼
+        ┌──────────────────────┐  ┌──────────────────────┐
+        │   Auth Service       │  │   Backend Service    │
+        │   (Authentication)   │  │   (REST API)         │
+        │   Port 3001          │  │   Port 5000          │
+        │                      │  │                      │
+        │  ┌────────────────┐  │  │  ┌────────────────┐  │
+        │  │  Replica 1     │  │  │  │  Replica 1     │  │
+        │  ├────────────────┤  │  │  ├────────────────┤  │
+        │  │  Replica 2     │◄─┼──┼──┤  Replica 2     │  │
+        │  ├────────────────┤  │  │  ├────────────────┤  │
+        │  │  Replica 3     │  │  │  │  Replica 3     │  │
+        │  └────────────────┘  │  │  └────────────────┘  │
+        └──────────┬───────────┘  └──────────┬───────────┘
+                   │                         │
+                   │  ClusterIP: auth-service│
+                   │  NodePort: 30001        │
+                   │                         │  ClusterIP: backend-service
+                   │                         │  NodePort: 30000
+                   │                         │
+                   │   Token Verification    │
+                   └─────────────┬───────────┘
+                                 │
+                                 ▼
+                    ┌────────────────────────┐
+                    │   PostgreSQL Database  │
+                    │   (Persistent Storage) │
+                    │   Port 5432            │
+                    │                        │
+                    │   ┌──────────────┐     │
+                    │   │  Replica 1   │     │
+                    │   │  (Single)    │     │
+                    │   └──────────────┘     │
+                    │         │              │
+                    │         ▼              │
+                    │  ┌──────────────────┐  │
+                    │  │ Persistent Volume│  │
+                    │  │    (5Gi)         │  │
+                    │  └──────────────────┘  │
+                    └────────────────────────┘
+                         ClusterIP: postgres-service
+
+
+╔═══════════════════════════════════════════════════════════════════════╗
+║                         Authentication Flow                            ║
+╚═══════════════════════════════════════════════════════════════════════╝
+
+ 1. User enters credentials in Frontend
+        │
+        ▼
+ 2. Frontend sends POST /login to Auth Service
+        │
+        ▼
+ 3. Auth Service validates credentials (bcrypt hash check)
+        │
+        ▼
+ 4. Auth Service queries PostgreSQL for user data
+        │
+        ▼
+ 5. Auth Service generates JWT tokens (access + refresh)
+        │
+        ▼
+ 6. Frontend receives tokens and stores in localStorage
+        │
+        ▼
+ 7. Frontend sends requests with "Authorization: Bearer <token>"
+        │
+        ▼
+ 8. Backend verifies token with Auth Service
+        │
+        ▼
+ 9. Backend returns protected data to Frontend
+        │
+        ▼
+10. Frontend displays data in Dashboard
+
+
+╔═══════════════════════════════════════════════════════════════════════╗
+║                      Kubernetes Resources                              ║
+╚═══════════════════════════════════════════════════════════════════════╝
+
+┌─────────────────────────────────────────────────────────────────────┐
+│  Namespace: microservices                                           │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                     │
+│  Deployments:                                                       │
+│    • frontend-deployment          (3 replicas)                      │
+│    • backend-deployment           (3 replicas)                      │
+│    • auth-service-deployment      (3 replicas)                      │
+│    • postgres-deployment          (1 replica)                       │
+│                                                                     │
+│  Services:                                                          │
+│    • frontend-service             (NodePort: 30080)                 │
+│    • backend-service              (ClusterIP + NodePort: 30000)     │
+│    • auth-service                 (ClusterIP + NodePort: 30001)     │
+│    • postgres-service             (ClusterIP)                       │
+│                                                                     │
+│  Storage:                                                           │
+│    • postgres-pv                  (PersistentVolume: 5Gi)           │
+│    • postgres-pvc                 (PersistentVolumeClaim: 5Gi)      │
+│                                                                     │
+│  ConfigMaps:                                                        │
+│    • app-config                   (Environment variables)           │
+│    • db-init-script               (Database initialization)         │
+│                                                                     │
+│  Secrets:                                                           │
+│    • app-secrets                  (DB credentials, JWT secrets)     │
+│                                                                     │
+└─────────────────────────────────────────────────────────────────────┘
+
+
+╔═══════════════════════════════════════════════════════════════════════╗
+║                         Network Ports                                  ║
+╚═══════════════════════════════════════════════════════════════════════╝
+
+┌─────────────────────┬──────────────┬─────────────┬──────────────────┐
+│ Service             │ Container    │ ClusterIP   │ NodePort         │
+│                     │ Port         │ Port        │ (External)       │
+├─────────────────────┼──────────────┼─────────────┼──────────────────┤
+│ Frontend            │ 80           │ 80          │ 30080            │
+│ Backend             │ 5000         │ 5000        │ 30000            │
+│ Auth Service        │ 3001         │ 3001        │ 30001            │
+│ PostgreSQL          │ 5432         │ 5432        │ -                │
+└─────────────────────┴──────────────┴─────────────┴──────────────────┘
+
+External Access (Minikube):
+  Frontend:     http://<MINIKUBE_IP>:30080
+  Backend:      http://<MINIKUBE_IP>:30000/health
+  Auth Service: http://<MINIKUBE_IP>:30001/health
+
+
+╔═══════════════════════════════════════════════════════════════════════╗
+║                    Technology Stack                                    ║
+╚═══════════════════════════════════════════════════════════════════════╝
+
+┌──────────────────────────────────────────────────────────────────────┐
+│  Frontend:      React 18, React Router, Axios, Modern CSS            │
+│  Backend:       Node.js, Express, pg (PostgreSQL client)             │
+│  Auth Service:  Node.js, Express, bcryptjs, jsonwebtoken, pg         │
+│  Database:      PostgreSQL 15                                        │
+│  Container:     Docker, multi-stage builds, Alpine Linux             │
+│  Orchestration: Kubernetes, Minikube                                 │
+│  Web Server:    Nginx (for frontend static files)                    │
+└──────────────────────────────────────────────────────────────────────┘
+
+
+╔═══════════════════════════════════════════════════════════════════════╗
+║                      Security Features                                 ║
+╚═══════════════════════════════════════════════════════════════════════╝
+
+ ✓ Password Hashing:     bcrypt with 10 salt rounds
+ ✓ JWT Tokens:           Access tokens (1h) + Refresh tokens (7d)
+ ✓ Token Verification:   Centralized auth service validation
+ ✓ Secrets Management:   Kubernetes Secrets (base64 encoded)
+ ✓ Non-root Containers:  All services run as non-root user
+ ✓ Network Isolation:    ClusterIP for internal communication
+ ✓ Password Reset:       Secure token with expiry
+ ✓ Input Validation:     Server-side validation on all endpoints
+
+
+╔═══════════════════════════════════════════════════════════════════════╗
+║                    Scalability Features                                ║
+╚═══════════════════════════════════════════════════════════════════════╝
+
+ ✓ Horizontal Scaling:   3 replicas per service (easy to scale)
+ ✓ Load Balancing:       Kubernetes Service load balancer
+ ✓ Stateless Services:   JWT eliminates session storage
+ ✓ Health Checks:        Liveness & readiness probes
+ ✓ Resource Limits:      CPU and memory constraints
+ ✓ Rolling Updates:      Zero-downtime deployments
+ ✓ Self-Healing:         Automatic pod restart on failure
+ ✓ Persistent Storage:   Database data survives pod restarts
+
+
+═══════════════════════════════════════════════════════════════════════
+ Note: Convert this to a PNG using tools like:
+ • https://asciiflow.com
+ • draw.io / diagrams.net
+ • Lucidchart
+ • Microsoft Visio
+ • Or any diagramming tool of choice
+═══════════════════════════════════════════════════════════════════════
+

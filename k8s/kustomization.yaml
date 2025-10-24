@@ -1,0 +1,27 @@
+# Kustomization file for easier deployment management
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: microservices
+
+resources:
+  - namespace.yaml
+  - configmap.yaml
+  - secrets.yaml
+  - pv-pvc.yaml
+  - db-deployment.yaml
+  - auth-deployment.yaml
+  - backend-deployment.yaml
+  - frontend-deployment.yaml
+  # - ingress.yaml  # Uncomment if using ingress
+
+commonLabels:
+  project: microservices-auth
+  managed-by: kustomize
+
+# You can add patches, transformers, etc. here
+# Example: Change replicas for all deployments
+# replicas:
+# - name: auth-service-deployment
+#   count: 5
+
